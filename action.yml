@@ -16,6 +16,9 @@ inputs:
   update_exclude:
     description: 'Modules excluded from checks. Use comma separated list: token,redirect,pathauto'
     required: false
+  composer_prefix:
+    description: 'Prefix for composer commands. Example: ddev for containerized environments'
+    required: false
 runs:
   using: "composite"
   steps:
@@ -24,6 +27,8 @@ runs:
     - run: echo "INPUT_UPDATE_CORE=${{ inputs.update_core }}" >> $GITHUB_ENV
       shell: bash
     - run: echo "INPUT_UPDATE_EXCLUDE=${{ inputs.update_exclude }}" >> $GITHUB_ENV
+      shell: bash
+    - run: echo "INPUT_COMPOSER_PREFIX=${{ inputs.composer_prefix }}" >> $GITHUB_ENV
       shell: bash
     - run: chmod +x ${{ github.action_path }}/drupal-update.sh
       shell: bash

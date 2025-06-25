@@ -9,7 +9,8 @@
 # Standalone usage                                                            #
 # Run minor updates                  -> bash drupal-update.sh                 #
 # Run all updates                    -> bash drupal-update.sh -t all          #
-# Run updates, except core           -> bash drupal-update.sh -t all -c false #                                                                          #
+# Run updates, except core           -> bash drupal-update.sh -t all -c false #
+# Run with ddev prefix               -> bash drupal-update.sh -p ddev         #                                                                          #
 ###############################################################################
 
 set -e
@@ -30,6 +31,7 @@ usage() {
  echo " -o, --output    Specify an output file to save summary. Default is none."
  echo " -c, --core      Flag to enable or disable Drupal core upgrades check. Default is true."
  echo " -e, --exclude   Exclude certain modules from updates check. Use comma-separated list: token,redirect,pathauto"
+ echo " -p, --prefix    Prefix for composer commands. Example: 'ddev' for 'ddev composer update'. Default is none."
 }
 
 # Exit with error.
@@ -44,6 +46,7 @@ validate_options() {
     UPDATE_CORE=$2
     UPDATE_EXCLUDE=$3
     SUMMARY_FILE=$4
+    COMPOSER_PREFIX=$5
 
     if  [ -n "$UPDATE_TYPE" ] && [ "$UPDATE_TYPE" != "semver-safe-update" ] && [ "$UPDATE_TYPE" != "all" ]; then
       echo "Error: Update type can be either semver-safe-update or all"
@@ -96,15 +99,15 @@ composer_output() {
     # Handle specific case for Drupal core.
   if [ "$PROJECT_NAME" = "drupal/core" ]; then
     if [ "$UPDATE_TYPE" == "all" ] && [ "$UPDATE_STATUS" == "update-possible" ]; then
-      COMPOSER_OUTPUT=$(composer require drupal/core-recommended:"$LATEST_VERSION" drupal/core-composer-scaffold:"$LATEST_VERSION" drupal/core-project-message:"$LATEST_VERSION" -W -q -n --ignore-platform-reqs)
+      COMPOSER_OUTPUT=$($COMPOSER_PREFIX composer require drupal/core-recommended:"$LATEST_VERSION" drupal/core-composer-scaffold:"$LATEST_VERSION" drupal/core-project-message:"$LATEST_VERSION" -W -q -n --ignore-platform-reqs)
     else
-      COMPOSER_OUTPUT=$(composer update drupal/core-* -W -q -n --ignore-platform-reqs)
+      COMPOSER_OUTPUT=$($COMPOSER_PREFIX composer update drupal/core-* -W -q -n --ignore-platform-reqs)
     fi
   else
     if [ "$UPDATE_STATUS" == "update-possible" ]; then
-      COMPOSER_OUTPUT=$(composer require "$PROJECT_NAME":"$LATEST_VERSION" -W -q -n --ignore-platform-reqs)
+      COMPOSER_OUTPUT=$($COMPOSER_PREFIX composer require "$PROJECT_NAME":"$LATEST_VERSION" -W -q -n --ignore-platform-reqs)
     else
-      COMPOSER_OUTPUT=$(composer update "$PROJECT_NAME" -W -q -n --ignore-platform-reqs)
+      COMPOSER_OUTPUT=$($COMPOSER_PREFIX composer update "$PROJECT_NAME" -W -q -n --ignore-platform-reqs)
     fi
   fi
 
@@ -221,6 +224,7 @@ SUMMARY_FILE=
 UPDATE_TYPE="semver-safe-update"
 UPDATE_EXCLUDE=
 UPDATE_CORE=true
+COMPOSER_PREFIX=""
 
 # Determine if we're running inside GitHub actions.
 GITHUB_RUNNING_ACTION=$GITHUB_ACTIONS
@@ -231,10 +235,11 @@ then
   UPDATE_TYPE=${INPUT_UPDATE_TYPE}
   UPDATE_CORE=${INPUT_UPDATE_CORE}
   UPDATE_EXCLUDE=${INPUT_UPDATE_EXCLUDE}
+  COMPOSER_PREFIX=${INPUT_COMPOSER_PREFIX}
 fi
 
 # Go through any flags available.
-while getopts "h:t:c:e:o:" options; do
+while getopts "h:t:c:e:o:p:" options; do
   case "${options}" in
   h)
     echo usage
@@ -252,6 +257,9 @@ while getopts "h:t:c:e:o:" options; do
   o)
     SUMMARY_FILE=${OPTARG}
     ;;
+  p)
+    COMPOSER_PREFIX=${OPTARG}
+    ;;
   :)
     echo "Error: -${OPTARG} requires an argument."
     ;;
@@ -262,7 +270,7 @@ while getopts "h:t:c:e:o:" options; do
 done
 
 # Perform validations of shell script arguments and requirements to run the script.
-validate_options "$UPDATE_TYPE" "$UPDATE_CORE" "$UPDATE_EXCLUDE" "$SUMMARY_FILE"
+validate_options "$UPDATE_TYPE" "$UPDATE_CORE" "$UPDATE_EXCLUDE" "$SUMMARY_FILE" "$COMPOSER_PREFIX"
 validate_requirements
 
 # If we have a list of excluded modules, convert it to a loop list.
@@ -279,7 +287,7 @@ SUMMARY_INSTRUCTIONS="### Automated Drupal update summary\n"
 SUMMARY_OUTPUT_TABLE="| Project name | Old version | Proposed version | Status | Patches | Abandoned |\n"
 SUMMARY_OUTPUT_TABLE+="| ------ | ------ | ------ | ------ | ------ | ------ |\n"
 # Read composer output. Remove whitespaces - jq 1.5 can break while parsing.
-UPDATES=$(composer outdated "drupal/*" -f json -D --locked --ignore-platform-reqs | sed -r 's/\s+//g');
+UPDATES=$($COMPOSER_PREFIX composer outdated "drupal/*" -f json -D --locked --ignore-platform-reqs | sed -r 's/\s+//g');
 
 # Loop trough other packages.
 for UPDATE_PACKAGE in $(echo "${UPDATES}" | jq -c '.locked[]'); do
